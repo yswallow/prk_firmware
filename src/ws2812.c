@@ -7,14 +7,18 @@
 #include "hardware/dma.h"
 #include "hardware/sync.h"
 
+#define PIO_OFFSET_INVALID 0xFF
+
 static PIO pio = pio1;
 static uint sm = 0;
+static uint offset = PIO_OFFSET_INVALID;
 
+#define DMA_WS2812_CHANNEL_INVALID 0xFF
 #define MAX_PIXEL_SIZE 150
 
 static int32_t pixels[MAX_PIXEL_SIZE + 1];
 static int32_t dma_ws2812_grb_pixels[MAX_PIXEL_SIZE];
-static int dma_ws2812_channel;
+static int dma_ws2812_channel = DMA_WS2812_CHANNEL_INVALID;
 static uint8_t dma_ws2812_last_append_index = 0;
 static uint32_t dma_ws2812_last_append_us = 0;
 
@@ -70,7 +74,10 @@ init_dma_ws2812(void)
 void
 c_ws2812_init(mrb_vm *vm, mrb_value *v, int argc)
 {
-  uint offset = pio_add_program(pio, &ws2812_program);
+  if(offset==PIO_OFFSET_INVALID) {
+    offset = pio_add_program(pio, &ws2812_program);
+  }
+  
   bool is_rgbw;
   if (GET_ARG(3).tt == MRBC_TT_TRUE) {
     is_rgbw = true;
@@ -78,7 +85,10 @@ c_ws2812_init(mrb_vm *vm, mrb_value *v, int argc)
     is_rgbw = false;
   }
   ws2812_program_init(pio, sm, offset, GET_INT_ARG(1), is_rgbw);
-  init_dma_ws2812();
+  
+  if(dma_ws2812_channel == DMA_WS2812_CHANNEL_INVALID) {
+    init_dma_ws2812();
+  }
 }
 
 void
