@@ -236,18 +236,13 @@ static uint16_t consumer_keycode = 0;
 static uint32_t joystick_buttons = 0;
 static uint8_t joystick_hat = 0;
 static bool via_active = false;
-static bool prev_has_keycode = false;
 
 static void
 send_hid_report(uint8_t report_id)
 {
   if( report_id == REPORT_ID_KEYBOARD ) {
     if( tud_hid_n_ready(0) ) {
-      if( keyboard_modifier || *keyboard_keycodes || prev_has_keycode )
-      {
-        tud_hid_n_keyboard_report(0, 0, keyboard_modifier, keyboard_keycodes);
-        prev_has_keycode = (keyboard_modifier || *keyboard_keycodes);
-      }
+      tud_hid_n_keyboard_report(0, 0, keyboard_modifier, keyboard_keycodes);
     }
     return;
   }
