@@ -16,10 +16,12 @@ uint8_t const * tud_descriptor_device_cb(void)
 // Configuration Descriptor
 //--------------------------------------------------------------------+
 
+#define PRK_NO_MSC
+
 #ifdef PRK_NO_MSC
-#define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + TUD_HID_INOUT_DESC_LEN)
+#define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + TUD_HID_INOUT_DESC_LEN * CFG_TUD_HID)
 #else
-#define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + TUD_MSC_DESC_LEN + TUD_HID_INOUT_DESC_LEN)
+#define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + TUD_MSC_DESC_LEN + TUD_HID_INOUT_DESC_LEN * CFG_TUD_HID)
 #endif
 
 #if CFG_TUSB_MCU == OPT_MCU_LPC175X_6X || CFG_TUSB_MCU == OPT_MCU_LPC177X_8X || CFG_TUSB_MCU == OPT_MCU_LPC40XX
@@ -64,12 +66,18 @@ uint8_t const * tud_descriptor_device_cb(void)
 
 #endif
 
-#define EPNUM_HID_IN    0x04
-#define EPNUM_HID_OUT   0x84
+#define EPNUM_HID_OUT      0x04
+#define EPNUM_HID_IN       0x84
+#define EPNUM_KEYBOARD_OUT 0x05
+#define EPNUM_KEYBOARD_IN  0x85
+
+uint8_t const desc_keyboard_report[] =
+{
+  TUD_HID_REPORT_DESC_KEYBOARD(),
+};
 
 uint8_t const desc_hid_report[] =
 {
-  TUD_HID_REPORT_DESC_KEYBOARD( HID_REPORT_ID(REPORT_ID_KEYBOARD         )),
   TUD_HID_REPORT_DESC_MOUSE   ( HID_REPORT_ID(REPORT_ID_MOUSE            )),
   TUD_HID_REPORT_DESC_CONSUMER( HID_REPORT_ID(REPORT_ID_CONSUMER_CONTROL )),
   TUD_HID_REPORT_DESC_GAMEPAD ( HID_REPORT_ID(REPORT_ID_GAMEPAD          )),
@@ -78,7 +86,8 @@ uint8_t const desc_hid_report[] =
 
 enum
 {
-  ITF_NUM_CDC = 0,
+  ITF_NUM_KEYBOARD = 0,
+  ITF_NUM_CDC,
   ITF_NUM_CDC_DATA,
   ITF_NUM_HID,
 #ifndef PRK_NO_MSC
@@ -92,6 +101,12 @@ uint8_t const desc_fs_configuration[] =
   // Config number, interface count, string index, total length, attribute, power in mA
   TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN, 0x00, 100),
 
+  // Interface number, string index, protocol, report descriptor len, EP In address, size & polling interval
+  TUD_HID_INOUT_DESCRIPTOR(ITF_NUM_KEYBOARD, 0, HID_ITF_PROTOCOL_KEYBOARD, sizeof(desc_keyboard_report), EPNUM_KEYBOARD_IN, EPNUM_KEYBOARD_OUT, 16, 0x08),
+
+  // Interface number, string index, protocol, report descriptor len, EP In address, size & polling interval
+  TUD_HID_INOUT_DESCRIPTOR(ITF_NUM_HID, 0, 0, sizeof(desc_hid_report), EPNUM_HID_IN, EPNUM_HID_OUT, 64, 0x01),
+  
   // Interface number, string index, EP notification address and size, EP data address (out, in) and size.
   TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8, EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
 
@@ -99,9 +114,6 @@ uint8_t const desc_fs_configuration[] =
   // Interface number, string index, EP Out & EP In address, EP size
   TUD_MSC_DESCRIPTOR(ITF_NUM_MSC, 5, EPNUM_MSC_OUT, EPNUM_MSC_IN, 64),
 #endif
-
-  // Interface number, string index, protocol, report descriptor len, EP In address, size & polling interval
-  TUD_HID_INOUT_DESCRIPTOR(ITF_NUM_HID, 0, 0, sizeof(desc_hid_report), EPNUM_HID_OUT, EPNUM_HID_IN, 64, 0x01),
 };
 
 
@@ -169,7 +181,16 @@ uint8_t keyboard_output_report = 0;
 
 uint8_t const *
 tud_hid_descriptor_report_cb(uint8_t instance) {
-    return desc_hid_report;
+  switch (instance)
+  {
+    case 0:
+      return desc_keyboard_report;
+      break;
+
+    case 1:
+      return desc_hid_report;
+      break;
+  }
 }
 
 uint16_t
@@ -179,25 +200,29 @@ tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t rep
 
 void
 tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type, uint8_t const* buffer, uint16_t bufsize) {
-  if (report_type == HID_REPORT_TYPE_INVALID) {
-    report_id = buffer[0];
-    buffer++;
-    bufsize--;
-  } else if(report_type != HID_REPORT_TYPE_OUTPUT && report_type != HID_REPORT_TYPE_FEATURE) {
-    return;
-  }
-
-  if (bufsize < 1) return;
-
-  switch (report_id) {
-    case REPORT_ID_RAWHID:
-      memcpy(raw_hid_last_received_report, buffer, bufsize);
-      raw_hid_last_received_report_length = bufsize;
-      raw_hid_report_received = true;
-      break;
-    case REPORT_ID_KEYBOARD:
+  switch (instance) {
+  	case 0:
+  	  // Keyboard
       if (observing_output_report) {
         keyboard_output_report = buffer[0];
+      }
+      break;
+    case 1:
+      if (report_type == HID_REPORT_TYPE_INVALID) {
+        report_id = buffer[0];
+        buffer++;
+        bufsize--;
+      } else if(report_type != HID_REPORT_TYPE_OUTPUT && report_type != HID_REPORT_TYPE_FEATURE) {
+        return;
+      }
+
+      if (bufsize < 1) return;
+      switch (report_id) {
+        case REPORT_ID_RAWHID:
+          memcpy(raw_hid_last_received_report, buffer, bufsize);
+          raw_hid_last_received_report_length = bufsize;
+          raw_hid_report_received = true;
+          break;
       }
       break;
     default:
@@ -211,22 +236,30 @@ static uint16_t consumer_keycode = 0;
 static uint32_t joystick_buttons = 0;
 static uint8_t joystick_hat = 0;
 static bool via_active = false;
+static bool prev_has_keycode = false;
+
 static void
 send_hid_report(uint8_t report_id)
 {
+  if( report_id == REPORT_ID_KEYBOARD ) {
+    if( tud_hid_n_ready(0) ) {
+      if( keyboard_modifier || *keyboard_keycodes || prev_has_keycode )
+      {
+        tud_hid_n_keyboard_report(0, 0, keyboard_modifier, keyboard_keycodes);
+        prev_has_keycode = (keyboard_modifier || *keyboard_keycodes);
+      }
+    }
+    return;
+  }
+
   // skip if hid is not ready yet
-  if ( !tud_hid_ready() ) return;
+  if ( !tud_hid_n_ready(1) ) return;
 
   switch(report_id)
   {
-    case REPORT_ID_KEYBOARD: {
-      tud_hid_keyboard_report(REPORT_ID_KEYBOARD, keyboard_modifier, keyboard_keycodes);
-    }
-    break;
-
     case REPORT_ID_MOUSE: {
       int8_t const delta = 0;
-      tud_hid_mouse_report(REPORT_ID_MOUSE, 0x00, delta, delta, 0, 0);
+      tud_hid_n_mouse_report(1,REPORT_ID_MOUSE, 0x00, delta, delta, 0, 0);
     }
     break;
 
@@ -238,7 +271,7 @@ send_hid_report(uint8_t report_id)
         } else {
           prev_keycode = consumer_keycode;
         }
-        tud_hid_report(REPORT_ID_CONSUMER_CONTROL, &consumer_keycode, 2);
+        tud_hid_n_report(1,REPORT_ID_CONSUMER_CONTROL, &consumer_keycode, 2);
       }
     }
     break;
@@ -263,6 +296,11 @@ tud_hid_report_complete_cb(uint8_t instance, uint8_t const* report, uint8_t len)
   (void) instance;
   (void) len;
   uint8_t next_report_id = report[0] + 1;
+  
+  if ( instance==0 ) {
+    next_report_id=2;
+  }
+
   if (next_report_id < REPORT_ID_COUNT - 1) {
     //                 ^^^^^^^^^^^^^^^^^^^ skip REPORT_ID_RAWHID
     send_hid_report(next_report_id);
@@ -330,7 +368,7 @@ report_raw_hid(uint8_t* data, uint8_t len)
   /*------------- RAW HID -------------*/
   if (tud_hid_ready()) {
     via_active = true;
-    return tud_hid_report(REPORT_ID_RAWHID, data, len);
+    return tud_hid_n_report(1, REPORT_ID_RAWHID, data, len);
   } else {
     return false;
   }
