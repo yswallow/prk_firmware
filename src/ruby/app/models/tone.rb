@@ -4,8 +4,8 @@ class Tone
     pwm_tone_init pin
   end
 
-  def set_tones(tones, cycle_ms)
-    pwm_tone_set_tones tones, cycle_ms
+  def set_tones(tones)
+    pwm_tone_set_tones tones
   end
   def start
     pwm_tone_start
