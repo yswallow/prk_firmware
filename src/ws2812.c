@@ -13,7 +13,7 @@ static uint sm = 0;
 
 #define PIO_WS2812_INST_HEAD uart_tx_program.length
 
-#define MAX_PIXEL_SIZE 150
+#define MAX_PIXEL_SIZE 170
 
 static int32_t pixels[MAX_PIXEL_SIZE + 1] = {};
 static int32_t dma_ws2812_grb_pixels[MAX_PIXEL_SIZE];

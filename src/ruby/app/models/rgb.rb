@@ -327,7 +327,7 @@ class RGB
   def add_pixel(x, y)
     @pixel_index ||= 0
     # @type ivar @pixel_index: Integer
-    if 150 <= @pixel_index
+    if 170 <= @pixel_index
       puts "Error: MAX_PIXEL_SIZE reached"
       return
     end
